@@ -1,0 +1,123 @@
+{ "frames": {
+   "0": {
+    "frame": { "x": 5, "y": 5, "w": 55, "h": 74 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 0, "w": 45, "h": 64 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "1": {
+    "frame": { "x": 127, "y": 5, "w": 55, "h": 72 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 1, "w": 45, "h": 62 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "2": {
+    "frame": { "x": 5, "y": 84, "w": 55, "h": 69 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 2, "w": 45, "h": 59 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "3": {
+    "frame": { "x": 5, "y": 158, "w": 55, "h": 67 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 2, "w": 45, "h": 57 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "4": {
+    "frame": { "x": 187, "y": 5, "w": 56, "h": 70 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 0, "y": 1, "w": 46, "h": 60 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "5": {
+    "frame": { "x": 125, "y": 226, "w": 55, "h": 67 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 3, "w": 45, "h": 57 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "6": {
+    "frame": { "x": 125, "y": 154, "w": 56, "h": 67 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 3, "w": 46, "h": 57 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "7": {
+    "frame": { "x": 126, "y": 82, "w": 57, "h": 67 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 3, "w": 47, "h": 57 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "8": {
+    "frame": { "x": 65, "y": 5, "w": 57, "h": 70 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 2, "w": 47, "h": 60 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "9": {
+    "frame": { "x": 65, "y": 80, "w": 56, "h": 69 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 4, "w": 46, "h": 59 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "10": {
+    "frame": { "x": 187, "y": 80, "w": 55, "h": 70 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 3, "w": 45, "h": 60 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "11": {
+    "frame": { "x": 65, "y": 154, "w": 55, "h": 69 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 3, "w": 45, "h": 59 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   },
+   "12": {
+    "frame": { "x": 186, "y": 155, "w": 55, "h": 68 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 1, "y": 5, "w": 45, "h": 58 },
+    "sourceSize": { "w": 48, "h": 64 },
+    "duration": 100
+   }
+ },
+ "meta": {
+  "app": "https://www.aseprite.org/",
+  "version": "1.2.40-x64",
+  "image": "jewelspider_walk.png",
+  "format": "RGBA8888",
+  "size": { "w": 243, "h": 293 },
+  "scale": "1",
+  "frameTags": [
+   { "name": "jewelspider_walk", "from": 0, "to": 12, "direction": "forward" }
+  ],
+  "layers": [
+   { "name": "Layer 1", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+  ]
+ }
+}

@@ -1,0 +1,13 @@
+{
+    "name": "socket-chat-example",
+    "version": "0.0.1",
+    "type": "module",
+    "description": "my first socket.io app",
+    "dependencies": {
+        "@kubernetes/client-node": "^0.18.1",
+        "express": "^4.18.2",
+        "node-fetch": "^3.3.0",
+        "phaser": "^3.55.2",
+        "socket.io": "^4.5.4"
+    }
+}

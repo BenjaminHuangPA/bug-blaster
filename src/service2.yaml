@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bug-blaster-service2
+spec:
+  selector:
+    app: bug-blaster-server2
+  ports:
+    - port: 3010
+      targetPort: 3100
+  type: LoadBalancer

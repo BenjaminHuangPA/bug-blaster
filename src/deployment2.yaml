@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bug-blaster-deployment2
+  labels:
+    app: bug-blaster-server2
+spec:
+  replicas: 1
+  selector: 
+    matchLabels: 
+      app: bug-blaster-server2
+  template:
+    metadata:
+      labels:
+        app: bug-blaster-server2
+    spec:
+      containers:
+      - name: bug-blaster-container
+        image: huan1398/bug-blaster:latest
+        env:
+        - name: LOBBY_PASSCODE
+          value: "hkRfLlutq5"
+        - name: SERVER_NAME
+          value: "bug-blaster-server2"
+        - name: SERVER_NUMBER
+          value: 2
+        ports:
+        - containerPort: 3000

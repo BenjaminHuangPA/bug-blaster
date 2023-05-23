@@ -1,0 +1,1678 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head> 
+        <meta charset="UTF-8" />
+        <title>Bug Blaster</title>
+        <script src="//cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
+        <script src="/socket.io/socket.io.js"></script>
+        <style type="text/css">
+            body {
+                margin: 0;
+            }
+        </style>
+    </head>
+    <body>
+        
+        <script type="text/javascript">
+            
+            if(typeof window != 'undefined'){
+                console.log("Running on the client");
+                console.log(localStorage.getItem("PLAYER_UUID"));
+            } else {
+                console.log("Running on the server!");
+            }
+
+            var GAME_STARTED = false;
+            var GAME_ENDED = false;
+            var IS_HOST = false;
+
+            var PLAYER_UUID = null;
+            var PLAYER_NAME = null;
+
+            //var socket = io();
+            var current_scene = null;
+            var players_active = [false, false, false, false];
+            var players_initial_coords = [null, null, null, null];
+            var players = [null, null, null, null];
+            var current_player_id;
+            var current_player_texture = null;
+
+            var player_x;
+            var player_y;
+            var cursors;
+
+            var player_velocity_x = 0;
+            var player_velocity_y = 0;
+
+            var left_keydown = false;
+            var right_keydown = false;
+            var up_keydown = false;
+            var down_keydown = false;
+
+            const player_sprite_map = new Map();
+            player_sprite_map.set(0, ["player1_north", "player1_south", "player1_east", "player1_west"]);
+            player_sprite_map.set(1, ["player2_north", "player2_south", "player2_east", "player2_west"]);
+            player_sprite_map.set(2, ["player3_north", "player3_south", "player3_east", "player3_west"]);
+            player_sprite_map.set(3, ["player4_north", "player4_south", "player4_east", "player4_west"]);
+
+            const SERVER_NAME = "";
+            const SERVER_NUMBER = -1;
+            const LOBBY_PASSCODE = "";
+
+            var player_names = ["Player1", "Player2", "Player3", "Player4"];
+
+
+
+            class Lobby extends Phaser.Scene {
+                constructor(socket){
+                    super('lobby');
+                    this.socket = socket;
+                    this.lobby_sprite_map = ['Player 1', 'Player 2', 'Player 3', 'Player 4'];
+                    this.lobby_sprite_pos = [[135, 300], [285, 300], [435, 300], [585, 300]];
+                    this.lobby_sprites_active = [false, false, false, false];
+                    this.avatars_spritegroup = null;
+                    this.playernames = [null, null, null, null];
+                    this.playernumbers = [null, null, null, null];
+                }
+
+                preload(){
+                    current_scene = this;
+                    this.load.image('start_game_button', 'start_game_button.png'); 
+                    this.load.image('quit_game_button', 'quit_game_button.png');  
+                    this.load.image('Player 1', 'player1_lobby.png');
+                    this.load.image('Player 2', 'player2_lobby.png');
+                    this.load.image('Player 3', 'player3_lobby.png');
+                    this.load.image('Player 4', 'player4_lobby.png');
+                }
+
+
+                clickStartButton(){
+                    this.socket.emit("game-start");
+                    this.scene.start('game');
+                }
+
+                clickQuitButton(){
+                    console.log("Clicked the quit button");
+                    this.socket.emit("get-frontend-ip", (response) => {
+                        window.location.replace("http://" + response.frontend_ip + ":" + response.frontend_port);
+                    })
+                    //window.location.replace("https://www.google.com/");
+                }
+
+                create() {
+
+                    //check if this is someone reconnecting
+                    let uuid = localStorage.getItem("PLAYER_UUID");
+
+                    this.avatars_spritegroup = this.physics.add.group();
+
+                    this.socket.emit("query-players", uuid, (response) => {
+                        console.log("My ID: " + response.id);
+                        current_player_id = response.id;
+                        PLAYER_UUID = response.socket_id;
+
+                        this.add.text(300, 20, "Lobby Passcode: " + response.LOBBY_PASSCODE);
+
+                        localStorage.setItem("PLAYER_UUID", PLAYER_UUID);
+
+                        if(current_player_id == 0){
+                            IS_HOST = true;
+                            let start_game_button = this.physics.add.sprite(165, 550, 'start_game_button').setInteractive();
+                            start_game_button.on('pointerdown', this.clickStartButton, this);
+                        }
+
+                        let quit_game_button = this.physics.add.sprite(635, 550, 'quit_game_button').setInteractive();
+                        quit_game_button.on('pointerdown', this.clickQuitButton, this);
+
+                        var player_data = response.player_coords;
+                        console.log("Player coords:");
+                        console.log(player_data);
+                        let i = 0;
+                        while(i < 4){
+                            if(player_data[i] != null){     
+                                players_initial_coords[i] = [player_data[i].x, player_data[i].y];
+                                players_active[i] = true;
+                                console.log("Adding new player with id " + i + " in query-players");
+
+                                let new_player = this.avatars_spritegroup.create(
+                                    this.lobby_sprite_pos[i][0],
+                                    this.lobby_sprite_pos[i][1],
+                                    this.lobby_sprite_map[i]
+                                )
+                                
+                                this.lobby_sprites_active[i] = true;
+                                let playernumber = this.add.text(
+                                    this.lobby_sprite_pos[i][0] - 100,
+                                    this.lobby_sprite_pos[i][1] + 150,
+                                    "<" + this.lobby_sprite_map[i] + ">"
+                                );
+                                this.playernumbers[i] = playernumber;
+                                if(i == current_player_id){
+                                    PLAYER_NAME = player_data[i].name;
+                                    let playername = this.add.text(
+                                        this.lobby_sprite_pos[i][0] - 100,
+                                        this.lobby_sprite_pos[i][1] + 170,
+                                        PLAYER_NAME
+                                    );
+                                    this.playernames[i] = playername;
+                                } else {
+
+                                    let playername = this.add.text(
+                                        this.lobby_sprite_pos[i][0] - 100,
+                                        this.lobby_sprite_pos[i][1] + 170,
+                                        player_data[i].name
+                                    );
+                                    this.playernames[i] = playername;
+                                }
+                                console.log(this.playernames);
+                            }
+                            i += 1;
+                        }
+                    })
+
+                    this.socket.on("new player", (response) => {
+                        console.log("New player id: " + response.id);
+                        var player_data = response.player_data;
+                        console.log("Player coords: ");
+                        console.log(player_data);
+                        let new_player_id = response.id;
+                        if(new_player_id !== current_player_id){
+                            players[new_player_id] = true;
+                            players_active[new_player_id] = true;
+                            players_initial_coords[new_player_id] = [player_data[new_player_id].x, player_data[new_player_id].y];
+                            console.log(this.avatars_spritegroup);
+                            let new_player = this.avatars_spritegroup.create(
+                                this.lobby_sprite_pos[new_player_id][0],
+                                this.lobby_sprite_pos[new_player_id][1],
+                                this.lobby_sprite_map[new_player_id]
+                            )
+                            let playernumber = this.add.text(
+                                this.lobby_sprite_pos[new_player_id][0] - 100,
+                                this.lobby_sprite_pos[new_player_id][1] + 150,
+                                "<" + this.lobby_sprite_map[new_player_id] + ">"
+                            );
+                            this.playernumbers[new_player_id] = playernumber;
+
+                            let playername = this.add.text(
+                                this.lobby_sprite_pos[new_player_id][0] - 100,
+                                this.lobby_sprite_pos[new_player_id][1] + 170,
+                                player_data[new_player_id].name
+                            );
+                            this.playernames[new_player_id] = playername;
+                            this.lobby_sprites_active[new_player_id] = true;
+                        }
+                    });
+
+                    this.socket.on("player left", (player_id, player_name) => {
+                        console.log("Player " + player_id + " with name " + player_name + " left.");
+                        this.lobby_sprites_active[player_id] = false;
+                        let i = 3
+                        console.log("Players active:");
+                        console.log(players_active);
+                        while(i >= 0){
+                            if(players_active[i] == true){
+                                break
+                            }
+                            i -= 1;
+                        }
+
+                        
+                        this.avatars_spritegroup.children.each(function(avatar){
+                            if(avatar.texture.key === "Player " + (i + 1)){
+                                players_active[i] = false;
+                                avatar.disableBody(true, true); 
+                            }
+                        });
+
+                        i = player_id;
+                        console.log(this.playernumbers);
+                        while(i < 3){
+                            if(this.playernames[i] != null && this.playernames[i+1] != null){
+                                //this.playernames[i].destroy();
+                                //this.playernumbers[i].destroy();
+                                this.playernames[i].setText(this.playernames[i+1].text);
+
+                            } else {
+                                break;
+                            }
+                            i += 1;
+                        }
+
+                        this.playernames[i].destroy();
+                        this.playernumbers[i].destroy();
+                        this.playernames[i] = null;
+                        this.playernumbers[i] = null;
+
+                        if(current_player_id > player_id){
+                            current_player_id -= 1;
+                            if(current_player_id == 0){
+                                //the current player is now the host
+                                IS_HOST = true;
+                                let start_game_button = this.physics.add.sprite(165, 550, 'start_game_button').setInteractive();
+                                start_game_button.on('pointerdown', this.clickStartButton, this);
+                            }
+                        }
+
+                        
+                    });
+
+                }
+
+                update(){
+                    
+                }
+            }
+
+            var target = 0;
+            var targeting_line; //invisible line for targeting purposes
+
+            var shooting_line; //actual shooting line that is visible
+            var shootingCooldown = false; //whether or not our current gun is on cooldown
+
+            var redbug1;
+
+            var pistol_display;
+            var pistol_ammo; //bar showing how much ammo is in the player's pistol 
+            var pistol_ammo_outline; //white box around the ammo bar 
+            var assault_rifle_display; //assault rifle icon
+            var assault_rifle_ammo;
+            var assault_rifle_ammo_outline;
+            var pump_shotgun_display;
+            var pump_shotgun_ammo;
+            var pump_shotgun_ammo_outline;
+
+            var my_rectangle;
+
+            var gameover_menu;
+            var victory_menu;
+
+            //var selected_weapon_icon;
+
+            class BugHealthBar {
+                constructor(scene, x, y, hp, max_hp){
+                    this.bar = scene.add.graphics();
+                    this.x = x;
+                    this.y = y;
+                    this.hp = hp;
+                    this.max_hp = max_hp;
+                    this.draw(this.x, this.y);
+                }
+
+                draw(x, y){
+                    this.bar.clear();
+                    this.bar.fillStyle(0x00000);
+                    this.bar.fillRect(x, y, this.max_hp, 6);
+                    this.bar.fillStyle(0x1fb82e);
+                    this.bar.fillRect(x + 2, y + 2, this.hp, 4);
+                }
+
+                die(){
+                    this.bar.clear();
+
+                    this.hp = 0;
+                }
+
+                decrease(amount){
+                    this.hp -= amount;
+                    this.draw();
+                }
+            }
+
+            class Bug extends Phaser.GameObjects.Sprite {
+                constructor(scene, x, y, type, walk_anim, name, id, max_hp, death_texture){
+                    super(scene, x, y);
+
+                    //this.setTexture(texture);
+                    this.setPosition(x, y);
+
+                    this.play({
+                        key: walk_anim,
+                        repeat: -1
+                    });
+
+                    scene.add.existing(this);
+
+                    this.name = name;
+                    this.type = type;
+                    this.id = id;
+                    this.max_hp = max_hp;
+                    this.hp = max_hp;
+                    this.death_texture = death_texture;
+                    this.isAlive = true;
+                    this.health_bar = new BugHealthBar(scene, x, y-20, this.hp, this.max_hp);
+                }
+
+                die(rotation){
+                    //call this function when an enemy dies
+                    this.hp = 0; // set HP to 0
+                    this.isAlive = false; //set flag to denote that this enemy is dead
+                    this.anims.stop();
+                    this.setTexture(this.death_texture); //set to death texture
+                    this.body.velocity.setToPolar(rotation, 0); //stop the sprite from moving
+                    this.health_bar.die() // clear health bar
+
+                
+
+                }
+
+                setHP(newHP){
+                    this.hp = newHP;
+                    this.health_bar.hp = newHP;
+                    this.health_bar.draw(this.x, this.y);
+                }
+            }
+
+            class AcidSpitter extends Bug {
+                constructor(scene, x, y, type, walk_anim, name, id, max_hp, death_texture, firing_anim){
+                    super(scene, x, y, type, walk_anim, name, id, max_hp, death_texture);
+                    this.firing_cooldown = false; //false = not on cooldown, can fire projectile.
+                    this.is_firing = false;
+                }
+
+                fire(){
+                    if(!this.firing_cooldown){
+                        this.play({
+                            key: firing_anim,
+                        });
+                        this.is_firing = true;
+                    }
+                }
+            }
+
+            class Gun {
+                constructor(name, id, clipsize, damage, bullet_color, bullet_sprite, fire_delay, is_active, firing_sound){
+                    this.name = name; //name of the gun
+                    this.id = id, //id (pistol = 1, AR = 2, etc)
+                    this.held_sprites = [];
+                    this.firing_sprites = [];
+                    //this.held_sprite_name = held_sprite_name; //name of the sprite of the player holding the gun (but not firing)
+                    //this.firing_sprite_name = firing_sprite_name; //name of the sprite of the player firing the gun
+                    this.clipsize = clipsize; //max ammo
+                    this.damage = damage;
+                    this.ammo = clipsize; //current ammo
+                    this.bullet_color = bullet_color; //color of the bullet line
+                    this.bullet_sprite = bullet_sprite; //name of the bullet sprite (if there is one)
+                    this.fire_delay = fire_delay; //delay (in milliseconds) before the gun can be fired again. Used to create TimerEvents
+                    this.is_active = is_active; //whether or not the player can use the weapon. If false, could be because the player doesn't have it yet, or it is out of ammo
+                    this.firing_sound = firing_sound; //name of the audio sprite of this gun firing
+                    this.display_sprite = null;
+                    this.inactive_display_sprite_name = null; //name of the inactive display sprite (if out of ammo/weapon not picked up yet)
+                    this.ammo_sprite = null;
+                    this.ammo_outline_sprite = null;
+                    this.selected_weapon_icon = null;
+                }
+
+                getIsActive(){
+                    return this.is_active;
+                }
+
+                getInactiveDisplaySprite(){
+                    return this.inactive_display_sprite_name;
+                }
+
+                getAmmoSprite(){
+                    return this.ammo_sprite;
+                }
+
+                getDamage(){
+                    return this.damage;
+                }
+
+                getAmmoOutlineSprite(){
+                    return this.ammo_outline_sprite;
+                }
+
+                setDisplaySprite(displaySprite){
+                    this.display_sprite = displaySprite;
+                }
+
+                setInactiveDisplaySprite(inactiveDisplaySprite){
+                    this.inactive_display_sprite_name = inactiveDisplaySprite;
+                }
+
+                setAmmoSprite(ammoSprite){
+                    this.ammo_sprite = ammoSprite;
+                }
+
+                setAmmoOutlineSprite(ammoOutlineSprite){
+                    this.ammo_outline_sprite = ammoOutlineSprite;
+                }
+
+                setIsActive(active){
+                    this.is_active = active;
+                }
+
+                reload(){
+                    this.ammo = this.clipsize;
+                    this.ammo_sprite.width = this.clipsize * 3;
+                    
+                }
+            }
+
+
+
+            class Game extends Phaser.Scene {
+                constructor(socket) {
+                    super('game');
+                    this.socket = socket;
+                    this.player_velocities = [[0, -80], [0, 80], [80, 0], [-80, 0]];
+                    this.player_sprites = ['player1_pistol', 'player2_pistol', 'player3_pistol', 'player4_pistol'];
+                    this.graphics;
+                    this.health_bar_graphics;
+                    this.health_bar_rect;
+                    this.ammo_graphics;
+                    this.other_graphics; //graphics object used for rendering drawn things from other players
+                    this.shooting_timer;
+                    this.update_timer;
+                    this.pistol = new Gun("Pistol", 0, 12, 10, 0xf0e516, null, 300, true, 'pistol_shot');
+                    this.assault_rifle = new Gun("Assault Rifle", 1, 30, 12, 0xed3915, null, 100, true, 'assault_rifle_shot');
+                    this.pump_shotgun = new Gun("Shotgun", 2, 8, 20, 0xd92525, null, 1000, true, 'shotgun_shot');
+                    this.mini_shotgun = new Gun("Mini Shotgun", 3, 2, 30, 0xd92525, null, 500, true, 'sawed_off_shotgun_shot');
+                    this.submachine_gun = new Gun("Submachine Gun", 4, 32, 12, 0xc954ff, null, 100, true, 'submachine_gun_shot');
+                    this.carbine = new Gun("Carbine", 5, 16, 18, 0x6077fc, null, 400, true, 'carbine_shot');
+                    this.current_weapon_id = 0;
+                    this.current_weapon = this.pistol;
+                    this.weapons = [this.pistol, this.assault_rifle, this.pump_shotgun, this.mini_shotgun, this.submachine_gun, this.carbine];
+                    this.draw_queue = []; //queue for storing drawn objects that get sent to the server
+                    this.audio_queue = []; //queue for storing audio clips to be played
+                    this.bug1_sprite;
+                    this.dropped_items; //physics group for items that can be picked up
+                    this.enemies_group; //physics group for storing enemies
+                    this.projectiles; //physics group for storing projectiles
+                    this.damage_cooldown = false; //tracks whether or not the player is on a damage cooldown timer (during which they cannot be hurt)
+                    this.isDead = false;
+                    this.dropped_item_to_id = {
+                        "assault_rifle_shimmer": 1,
+                        "pump_shotgun_shimmer": 2,
+                        "mini_shotgun_shimmer": 3,
+                        "submachine_gun_shimmer": 4,
+                        "carbine_shimmer": 5,
+                        "medpack_small_shimmer": 100,
+                        "medpack_large_shimmer": 101
+                    }
+                    this.current_wave_text;
+                    this.next_wave_text;
+
+                    this.player_name_texts = [null, null, null, null];
+                    
+                    this.Wkey;
+                    this.Akey;
+                    this.Skey;
+                    this.Dkey;
+                    /*
+                    The format for drawn objects is:
+                    {
+                        "shape": "Rectangle", "Line", "Triangle", etc
+                        "drawn_by": Player ID of the player who drew the shape
+                        "line_color": color of the lines of the shape
+                        "fill_color": color of the fill of the shape (if a rect, triangle, etc)
+                        "points": [array of points [x, y]]
+                    }
+                    */
+                }
+
+                preload(){
+                    current_scene = this;
+                    this.load.aseprite({
+                        key: 'bug1',
+                        textureURL: 'bug1_walk.png',
+                        atlasURL: 'bug1_walk.json'
+                    });
+                    this.load.aseprite({
+                        key: 'bluecrawler',
+                        textureURL: 'bluecrawler_walk.png',
+                        atlasURL: 'bluecrawler_walk.json'
+                    });
+                    this.load.aseprite({
+                        key: 'giant_crawler',
+                        textureURL: 'giantcrawler_walk.png',
+                        atlasURL: 'giantcrawler_walk.json'
+                    });
+                    this.load.aseprite({
+                        key: 'jewel_spider',
+                        textureURL: 'jewelspider_walk.png',
+                        atlasURL: 'jewelspider_walk.json'
+                    });
+                    this.load.aseprite({
+                        key: 'acid_spitter',
+                        textureURL: 'acidspitter_walk.png',
+                        atlasURL: 'acidspitter_walk.json'
+                    })
+                    this.load.aseprite({
+                        key: 'assault_rifle_pickup',
+                        textureURL: 'assault_rifle_pickup.png',
+                        atlasURL: 'assault_rifle_pickup.json'
+                    });
+                    this.load.aseprite({
+                        key: 'pump_shotgun_pickup',
+                        textureURL: 'pump_shotgun_pickup.png',
+                        atlasURL: 'pump_shotgun_pickup.json'
+                    });
+                    this.load.aseprite({
+                        key: 'carbine_pickup',
+                        textureURL: 'carbine_pickup.png',
+                        atlasURL: 'carbine_pickup.json'
+                    });
+                    this.load.aseprite({
+                        key: 'mini_shotgun_pickup',
+                        textureURL: 'mini_shotgun_pickup.png',
+                        atlasURL: 'mini_shotgun_pickup.json'
+                    });
+                    this.load.aseprite({
+                        key: 'submachine_gun_pickup',
+                        textureURL: 'submachine_gun_pickup.png',
+                        atlasURL: 'submachine_gun_pickup.json'
+                    });
+                    this.load.aseprite({
+                        key: 'you_died',
+                        textureURL: 'you_died.png',
+                        atlasURL: 'you_died.json'
+                    });
+                    this.load.aseprite({
+                        key: 'medpack_small',
+                        textureURL: 'medpack_small_pickup.png',
+                        atlasURL: 'medpack_small_pickup.json'
+                    });
+                    this.load.aseprite({
+                        key: 'medpack_large',
+                        textureURL: 'medpack_large_pickup.png',
+                        atlasURL: 'medpack_large_pickup.json'
+                    });
+                    this.load.image('bug1_dead', 'bug1_dead.png');
+                    this.load.image('bluecrawler_dead', 'bluecrawler_dead.png');
+                    this.load.image('giantcrawler_dead', 'giantcrawler_dead.png');
+                    this.load.image('jewelspider_dead', 'jewelspider_dead.png');
+                    this.load.image('acidspitter_dead', 'acidspitter_dead.png');
+                    this.load.image('pistol_active', 'pistol_active.png');
+                    this.load.image('assault_rifle_active', 'assault_rifle_active.png');
+                    this.load.image('pistol_inactive', 'pistol_inactive.png');
+                    this.load.image('assault_rifle_inactive', 'assault_rifle_inactive.png');
+                    this.load.image('pump_shotgun_active', 'pump_shotgun_active.png');
+                    this.load.image('pump_shotgun_inactive', 'pump_shotgun_inactive.png');
+                    this.load.image('mini_shotgun_active', 'mini_shotgun_active.png');
+                    this.load.image('mini_shotgun_inactive', 'mini_shotgun_inactive.png');
+                    this.load.image('submachine_gun_active', 'submachine_gun_active.png');
+                    this.load.image('submachine_gun_inactive', 'submachine_gun_inactive.png');
+                    this.load.image('carbine_active', 'carbine_active.png');
+                    this.load.image('carbine_inactive', 'carbine_inactive.png');
+                    this.load.image('acid_shot', 'acid_shot.png');
+                    this.load.image('acid_splash', 'acid_splash.png');
+                    this.load.image('player1', 'player1_east.png');
+                        this.load.image('player1_pistol', 'player1_pistol.png');
+                        this.load.image('player1_pistol_firing', 'player1_pistol_firing.png');
+                        this.load.image('player1_assault_rifle', 'player1_assault_rifle.png');
+                        this.load.image('player1_assault_rifle_firing', 'player1_assault_rifle_firing.png');
+                        this.load.image('player1_pump_shotgun', 'player1_pump_shotgun.png');
+                        this.load.image('player1_pump_shotgun_firing', 'player1_pump_shotgun_firing.png');
+                        this.load.image('player1_mini_shotgun', 'player1_mini_shotgun.png');
+                        this.load.image('player1_mini_shotgun_firing', 'player1_mini_shotgun_firing.png');
+                        this.load.image('player1_submachine_gun', 'player1_submachine_gun.png');
+                        this.load.image('player1_submachine_gun_firing', 'player1_submachine_gun_firing.png');
+                        this.load.image('player1_carbine', 'player1_carbine.png');
+                        this.load.image('player1_carbine_firing', 'player1_carbine_firing.png');
+                        this.load.image('player1_dead', 'player1_dead.png');
+                    this.load.image('player2', 'player2_east.png');
+                        this.load.image('player2_pistol', 'player2_pistol.png');
+                        this.load.image('player2_pistol_firing', 'player2_pistol_firing.png');
+                        this.load.image('player2_assault_rifle', 'player2_assault_rifle.png');
+                        this.load.image('player2_assault_rifle_firing', 'player2_assault_rifle_firing.png');
+                        this.load.image('player2_pump_shotgun', 'player2_pump_shotgun.png');
+                        this.load.image('player2_pump_shotgun_firing', 'player2_pump_shotgun_firing.png');
+                        this.load.image('player2_mini_shotgun', 'player2_mini_shotgun.png');
+                        this.load.image('player2_mini_shotgun_firing', 'player2_mini_shotgun_firing.png');
+                        this.load.image('player2_submachine_gun', 'player2_submachine_gun.png');
+                        this.load.image('player2_submachine_gun_firing', 'player2_submachine_gun_firing.png');
+                        this.load.image('player2_carbine', 'player2_carbine.png');
+                        this.load.image('player2_carbine_firing', 'player2_carbine_firing.png');
+                        this.load.image('player2_dead', 'player2_dead.png');
+                    this.load.image('player3', 'player3_east.png');
+                        this.load.image('player3_pistol', 'player3_pistol.png');
+                        this.load.image('player3_pistol_firing', 'player3_pistol_firing.png');
+                        this.load.image('player3_assault_rifle', 'player3_assault_rifle.png');
+                        this.load.image('player3_assault_rifle_firing', 'player3_assault_rifle_firing.png');
+                        this.load.image('player3_pump_shotgun', 'player3_pump_shotgun.png');
+                        this.load.image('player3_pump_shotgun_firing', 'player3_pump_shotgun_firing.png');
+                        this.load.image('player3_mini_shotgun', 'player3_mini_shotgun.png');
+                        this.load.image('player3_mini_shotgun_firing', 'player3_mini_shotgun_firing.png');
+                        this.load.image('player3_submachine_gun', 'player3_submachine_gun.png');
+                        this.load.image('player3_submachine_gun_firing', 'player3_submachine_gun_firing.png');
+                        this.load.image('player3_carbine', 'player3_carbine.png');
+                        this.load.image('player3_carbine_firing', 'player3_carbine_firing.png');
+                        this.load.image('player3_dead', 'player3_dead.png');
+                    this.load.image('player4', 'player4_east.png');
+                        this.load.image('player4_pistol', 'player4_pistol.png');
+                        this.load.image('player4_pistol_firing', 'player4_pistol_firing.png');
+                        this.load.image('player4_assault_rifle', 'player4_assault_rifle.png');
+                        this.load.image('player4_assault_rifle_firing', 'player4_assault_rifle_firing.png');
+                        this.load.image('player4_pump_shotgun', 'player4_pump_shotgun.png');
+                        this.load.image('player4_pump_shotgun_firing', 'player4_pump_shotgun_firing.png');
+                        this.load.image('player4_mini_shotgun', 'player4_mini_shotgun.png');
+                        this.load.image('player4_mini_shotgun_firing', 'player4_mini_shotgun_firing.png');
+                        this.load.image('player4_submachine_gun', 'player4_submachine_gun.png');
+                        this.load.image('player4_submachine_gun_firing', 'player4_submachine_gun_firing.png');
+                        this.load.image('player4_carbine', 'player4_carbine.png');
+                        this.load.image('player4_carbine_firing', 'player4_carbine_firing.png');
+                        this.load.image('player4_dead', 'player4_dead.png');
+                    this.load.image('pistol', 'pistol_40x80.png');
+                    this.load.image('pistol2', 'pistol_20x40.png');
+                    this.load.image('redbug1', 'red-bug1.png');
+                    this.load.image('gameover', 'gameover.png');
+                    this.load.image('victory', 'victory.png');
+
+                    this.load.audio("pistol_shot", 'pistol_shot.mp3');
+                    this.load.audio("assault_rifle_shot", 'assault_rifle_shot.mp3');
+                    this.load.audio("shotgun_shot", "shotgun_shot.mp3");
+                    this.load.audio("sawed_off_shotgun_shot", "sawed_off_shotgun_shot.mp3");
+                    this.load.audio("submachine_gun_shot", "submachine_gun_shot.mp3");
+                    this.load.audio("carbine_shot", "carbine_shot.mp3");
+                    this.load.audio("bug_hit", "bug_hit.mp3");
+                    this.load.audio("victory", "victory.mp3");
+                    this.load.audio("new_wave", "new_wave.mp3");
+                    this.load.audio("pickup_ammo", "pickup_ammo.mp3");
+                    this.load.audio("hurt", "hurt.mp3");
+                    this.load.audio("bug_death", "bug_death.mp3");
+                    this.load.audio("switch_weapon", "switch_weapon.mp3");
+                }
+
+                shootingTimerCallback(){
+                    shootingCooldown = false;
+                }
+
+                drawAmmoGraphics(){
+                    /*
+                    this.ammo_graphics.fillRectShape(pistol_ammo);
+                    this.ammo_graphics.strokeRectShape(pistol_ammo_outline);
+                    this.ammo_graphics.fillRectShape(assault_rifle_ammo);
+                    this.ammo_graphics.strokeRectShape(assault_rifle_ammo_outline);
+                    this.ammo_graphics.fillRectShape(pump_shotgun_ammo);
+                    this.ammo_graphics.strokeRectShape(pump_shotgun_ammo_outline);
+                    */
+                    this.weapons.map((weapon) => {
+                        this.ammo_graphics.fillRectShape(weapon.getAmmoSprite());
+                        this.ammo_graphics.strokeRectShape(weapon.getAmmoOutlineSprite());
+                    })
+                    this.ammo_graphics.fillRectShape(this.selected_weapon_icon);
+                }
+
+                toggleDamageCooldown(){
+                    this.damage_cooldown = false;
+                }
+
+                killCurrentPlayer(is_game_over){
+
+                    if(!is_game_over){
+                        //if this isn't a game over, draw the "YOU DIED!" message
+                        //if it is a game over, we want to make sure we don't obscure
+                        //the game over message so don't draw the "YOU DIED!" message
+                        let you_died = this.physics.add.sprite(272, 157).play({
+                            key: 'you_died',
+                            repeat: -1
+                        });
+                    }
+                    if(current_player_id == 0){
+                        players[current_player_id].setTexture('player1_dead');
+                    } else if (current_player_id == 1){
+                        players[current_player_id].setTexture('player2_dead');
+                    } else if (current_player_id == 2){
+                        players[current_player_id].setTexture('player3_dead');
+                    } else {
+                        players[current_player_id].setTexture('player4_dead');
+                    }
+                    
+                }
+
+                heal(amount){
+                    if(!this.isDead){
+                        this.socket.emit("heal", amount, current_player_id, (response) => {
+                            let remaining_hp_ratio = response.remaining_hp / 100;
+                            let healthbar_length = Math.floor(remaining_hp_ratio * 300);
+
+                            this.health_bar_graphics.clear();
+                            this.health_bar_graphics.fillStyle(0xffffff);
+                            this.health_bar_graphics.fillRect(465, 15, 304, 24);
+                            this.health_bar_graphics.fillStyle(0x8c1818);
+                            this.health_bar_graphics.fillRect(467, 17, healthbar_length, 20);
+                        })
+                    }
+                }
+
+                takeDamage(damage_amount){
+                    if(!this.damage_cooldown){
+                        if(!this.isDead){
+                            console.log("Taking damage...");
+                            this.socket.emit("take-damage", damage_amount, current_player_id, (response) => {
+                                let remaining_hp_ratio = response.remaining_hp / 100;
+                                let healthbar_length = Math.floor(remaining_hp_ratio * 300);
+
+                                this.health_bar_graphics.clear();
+                                this.health_bar_graphics.fillStyle(0xffffff);
+                                this.health_bar_graphics.fillRect(465, 15, 304, 24);
+                                this.health_bar_graphics.fillStyle(0x8c1818);
+                                this.health_bar_graphics.fillRect(467, 17, healthbar_length, 20);
+                                if(response.isDead){
+                                    this.isDead = true;
+                                    this.killCurrentPlayer(response.is_game_over);
+                                }
+                            });
+                            this.damage_cooldown = true;
+                            let cooldown = new Phaser.Time.TimerEvent({
+                                callback: this.toggleDamageCooldown,
+                                callbackScope: this,
+                                delay: 1000,
+                            });
+                            this.sound.play("hurt", {
+                                "volume": 0.5
+                            });
+
+                            this.time.addEvent(cooldown);
+                        } else {
+                            //player is dead, do nothing
+                        }
+                    }
+                }
+
+                scrollWheelCallback(pointer, gameObjects, deltaX, deltaY, deltaZ){
+                    if(!GAME_ENDED && !this.isDead){
+                        console.log(this.weapons);
+                        if(deltaY > 0){
+                            //scrolled down
+
+                            let found_weapon_id = -1;
+                            let original_weapon_id = this.current_weapon_id;
+                            while(this.current_weapon_id < this.weapons.length - 1){
+                                this.current_weapon_id += 1;
+                                //console.log("Looking at weapon " + this.weapons[this.current_weapon_id].name);
+                                if(this.weapons[this.current_weapon_id].getIsActive()){
+                                    //console.log("Switching weapons");
+                                    found_weapon_id = this.current_weapon_id;
+                                    break;
+                                }
+                            } 
+                            if(found_weapon_id != -1){
+                                this.current_weapon = this.weapons[this.current_weapon_id];
+                                this.selected_weapon_icon.y += 27 * (found_weapon_id - original_weapon_id);
+                                players[current_player_id].setTexture(this.current_weapon.held_sprites[current_player_id]);
+                                current_player_texture = this.current_weapon.held_sprites[current_player_id];
+                            } else {
+                                this.current_weapon_id = original_weapon_id;
+                            }
+                        } else {
+                            //scrolled up
+                            let found_weapon_id = -1;
+                            let original_weapon_id = this.current_weapon_id;
+                            while(this.current_weapon_id > 0){
+                                this.current_weapon_id -= 1;
+                                console.log("Looking at weapon " + this.weapons[this.current_weapon_id].name);
+                                if(this.weapons[this.current_weapon_id].getIsActive()){
+                                    found_weapon_id = this.current_weapon_id;
+                                    console.log("Switching weapons");
+                                    break;
+                                }
+                            }
+                            if(found_weapon_id != -1){
+                                this.current_weapon = this.weapons[this.current_weapon_id];
+                                this.selected_weapon_icon.y -= 27 * (original_weapon_id - found_weapon_id);
+                                players[current_player_id].setTexture(this.current_weapon.held_sprites[current_player_id]);
+                                current_player_texture = this.current_weapon.held_sprites[current_player_id];
+                            } else {
+                                this.current_weapon_id = original_weapon_id;
+                            }
+                        }
+                        this.ammo_graphics.clear();
+
+                        this.ammo_graphics.fillStyle(0x0000aa, 1.0);
+                        this.ammo_graphics.lineStyle(1, 0xffffff, 1.0);
+
+                        this.drawAmmoGraphics();
+                        this.sound.play("switch_weapon");
+                    }
+                    
+                }
+
+                groupCollisionCallback(){
+                    console.log("Targeting line collided with a member of the enemies group");
+                }
+
+
+                collectDroppedItem(player, dropped_item){
+                    console.log("Collected dropped item");
+                    dropped_item.disableBody(true, true);
+
+                    if(dropped_item.name < 100){
+                        let weapon_id = dropped_item.name;
+                        this.weapons[weapon_id].reload();
+                        this.weapons[weapon_id].setIsActive(true);
+                        this.sound.play("pickup_ammo");
+                        this.drawAmmoGraphics();
+                    } else {
+                        if(dropped_item.name === 100){
+                            //collected a small health pack
+                            this.heal(10);
+                        } else if (dropped_item.name === 101){
+                            //collected a large health pack
+                            this.heal(30);
+                        }
+                    }
+                    
+                }
+
+                eraseAcidSplash(splash){
+                    this.projectiles.remove(splash);
+                    splash.destroy();
+                }
+
+                eraseCorpse(corpse){
+                    this.enemies_group.remove(corpse);
+                    corpse.destroy();
+                }
+
+                projectileImpactPlayer(player, projectile){
+                    if(!this.isDead){
+                        this.takeDamage(10);
+                    }
+                }
+
+                enemyCollision(player, enemy){
+                    if(!this.isDead){
+                        this.takeDamage(5);
+                    }
+                }
+
+                movePlayer(direction){
+                    //3 = left
+                    //2 = right
+                    //0 = up
+                    //1 = down
+                    players[current_player_id].setVelocityX(this.player_velocities[direction][0]);
+                    players[current_player_id].setVelocityY(this.player_velocities[direction][1]);
+                    player_velocity_x = this.player_velocities[direction][0];
+                    player_velocity_y = this.player_velocities[direction][1];
+
+                    this.player_name_texts[current_player_id].x = players[current_player_id].x - 20;
+                    this.player_name_texts[current_player_id].y = players[current_player_id].y + 30;
+
+
+                    //players[current_player_id].setTexture(player_sprite_map.get(current_player_id)[direction]);
+                    //current_player_texture = player_sprite_map.get(current_player_id)[direction];
+                    current_player_texture = this.player_sprites[current_player_id];
+
+                    shooting_line.x1 = players[current_player_id].x;
+                    shooting_line.y1 = players[current_player_id].y;
+
+                    targeting_line.x1 = players[current_player_id].x;
+                    targeting_line.y1 = players[current_player_id].y;
+
+                }
+
+                create() { 
+
+
+
+                    current_player_texture = this.player_sprites[current_player_id];
+
+                    this.socket.off("player left");
+
+                    var bug1_anim = this.anims.createFromAseprite('bug1');
+                    var bluecrawler_anim = this.anims.createFromAseprite('bluecrawler');
+                    var giantcrawler_anim = this.anims.createFromAseprite('giant_crawler');
+                    var jewelspider_anim = this.anims.createFromAseprite('jewel_spider');
+                    var acidspitter_anim = this.anims.createFromAseprite('acid_spitter');
+                    var you_died_anim = this.anims.createFromAseprite('you_died');
+                    var medpack_small = this.anims.createFromAseprite('medpack_small');
+                    var medpack_large = this.anims.createFromAseprite('medpack_large');
+
+                    var assault_rifle_pickup = this.anims.createFromAseprite('assault_rifle_pickup');
+                    var pump_shotgun_pickup = this.anims.createFromAseprite('pump_shotgun_pickup');
+                    var mini_shotgun_pickup = this.anims.createFromAseprite('mini_shotgun_pickup');
+                    var submachine_gun_pickup = this.anims.createFromAseprite('submachine_gun_pickup');
+                    var carbine_pickup = this.anims.createFromAseprite('carbine_pickup');
+                    
+
+                    this.enemies_group = this.physics.add.group();    
+                    this.dropped_items = this.physics.add.group();
+                    this.projectiles = this.physics.add.group();
+
+                    let guns = ["pistol", "assault_rifle", "pump_shotgun", "mini_shotgun", "submachine_gun", "carbine"];
+                    let gun_index = 0;
+                    guns.map((gun) => {
+                        this.weapons[gun_index].held_sprites = ["player1_" + gun, "player2_" + gun, "player3_" + gun, "player4_" + gun];
+                        this.weapons[gun_index].firing_sprites = ["player1_" + gun + "_firing", "player2_" + gun + "_firing", "player3_" + gun + "_firing", "player4_" + gun + "_firing"];
+                        gun_index += 1;
+                    });
+
+
+                    this.update_timer = new Phaser.Time.TimerEvent({
+                        callback: this.update_server,
+                        callbackScope: this,
+                        delay: 100,
+                        loop: true
+                    });
+                    this.time.addEvent(this.update_timer);
+                    
+                    //this.graphics = new Phaser.GameObjects.Graphics(this);
+                    //this.ammo_graphics = new Phaser.GameObjects.Graphics(this);
+                    //this.other_graphics = new Phaser.GameObjects.Graphics(this);
+
+                    let health_bar_rect_outline = new Phaser.Geom.Rectangle(465, 15, 304, 24);
+                    this.health_bar_rect = new Phaser.Geom.Rectangle(467, 17, 300, 20);
+                    this.graphics = this.add.graphics();
+                    this.health_bar_graphics = this.add.graphics();
+                    this.ammo_graphics = this.add.graphics();
+                    this.other_graphics = this.add.graphics();
+
+                    this.health_bar_graphics.fillStyle(0xffffff);
+                    this.health_bar_graphics.fillRectShape(health_bar_rect_outline);
+                    this.health_bar_graphics.fillStyle(0x8c1818, 1.0);
+                    this.health_bar_graphics.fillRectShape(this.health_bar_rect);
+
+
+                    console.log(players_active);
+                    let i = 0;
+                    console.log(players_initial_coords);
+                    while(i < 4){
+                        if(players_active[i] == true){
+                            let new_player = this.physics.add.sprite(
+                                //Math.floor(200 * Math.random()), 
+                                //Math.floor(200 * Math.random()),
+                                players_initial_coords[i][0],
+                                players_initial_coords[i][1],
+                                this.player_sprites[i]
+                                //player_sprite_map.get(i)[0]
+                            )
+                            players[i] = new_player;
+                            this.player_name_texts[i] = this.add.text(
+                                players_initial_coords[i][0] - 20,
+                                players_initial_coords[i][1] + 30,
+                                player_names[i],
+                                {
+                                    "fontSize": "10px"
+                                }
+                            );
+                        }
+                        i += 1
+                    };
+
+                    players.map((player) => {
+                        if(player != null){
+                            console.log("Adding an overlap check for a player");
+                            this.physics.add.overlap(player, this.dropped_items, this.collectDroppedItem, null, this);
+                        }
+                    });
+
+                    this.physics.add.overlap(players[current_player_id], this.enemies_group, this.enemyCollision, null, this)
+                    this.physics.add.overlap(players[current_player_id], this.projectiles, this.projectileImpactPlayer, null, this);
+
+                    let horiz_offset = 10;
+
+                    
+                    //this.physics.moveTo(this.bug1_sprite, 100, 100, 30);
+
+                    let starting_display_y = 10;
+                    let ammo_y = 21;
+                    let outline_y = 20;
+                    gun_index = 0;
+                    let text_y = 8;
+                    guns.map((gun) => {
+                        let display = this.physics.add.sprite(
+                            30, 
+                            starting_display_y,
+                            gun + "_active"
+                        );
+                        let ammo = new Phaser.Geom.Rectangle(
+                            1 + horiz_offset,
+                            ammo_y,
+                            this.weapons[gun_index].clipsize * 3,
+                            5
+                        );
+                        let ammo_outline = new Phaser.Geom.Rectangle(
+                            horiz_offset,
+                            outline_y,
+                            (this.weapons[gun_index].clipsize * 3) + 2,
+                            6
+                        );
+                        this.weapons[gun_index].setDisplaySprite(display);
+                        this.weapons[gun_index].setAmmoSprite(ammo);
+                        this.weapons[gun_index].setAmmoOutlineSprite(ammo_outline);
+                        this.weapons[gun_index].setInactiveDisplaySprite(gun + "_inactive");
+                        starting_display_y += 27;
+                        ammo_y += 27;
+                        outline_y += 27;
+                        gun_index += 1;
+                    });
+
+
+                    this.selected_weapon_icon = new Phaser.Geom.Rectangle(0, 0, 6, 20);
+
+                    this.current_wave_text = this.add.text(200, 10, "Wave 0");
+                    this.next_wave_text = this.add.text(200, 30, "Time until next wave: 10");
+
+                    /*
+                    this.add.text(55, 8, "Pistol", {"fontSize": "10px"});
+                    this.add.text(55, 28, "Assault Rifle", {"fontSize": "10px"});
+                    this.add.text(55, 68, "Shotgun", {"fontSize": "10px"});
+                    this.add.text(55, 88, "Mini Shotgun", {"fontSize": "10px"});
+                    this.add.text(55, 108, "Submachine Gun", {"fontSize": "10px"});
+                    this.add.text(55, 128, "Carbine", {"fontSize": "10px"});
+                    */
+
+                    //this.socket.on("update_positions", this.updatePositionsCallback);
+                    
+                    this.socket.on("spawn_enemy", (response) => {
+                        console.log("Received a request from the server to create a new enemy");
+                        console.log(response);
+                        response.enemies.map((enemy) => {
+                            console.log(enemy.x);
+                            console.log(enemy.y);
+
+                            if(enemy.name == "Red Crawler"){
+                                let new_enemy = new Bug(this, enemy.x, enemy.y, enemy.name, "redcrawler_walk", enemy.id, enemy.id, enemy.max_hp, "bug1_dead");
+                                this.enemies_group.add(new_enemy);
+                            } else if (enemy.name == "Blue Crawler"){
+                                let new_enemy = new Bug(this, enemy.x, enemy.y, enemy.name, "bluecrawler_walk", enemy.id, enemy.id, enemy.max_hp, "bluecrawler_dead");
+                                this.enemies_group.add(new_enemy);
+                            } else if (enemy.name == "Giant Crawler"){
+                                let new_enemy = new Bug(this, enemy.x, enemy.y, enemy.name, "giantcrawler_walk", enemy.id, enemy.id, enemy.max_hp, "giantcrawler_dead");
+                                this.enemies_group.add(new_enemy);
+                            } else if (enemy.name == "Jewel Spider"){
+                                let new_enemy = new Bug(this, enemy.x, enemy.y, enemy.name, "jewelspider_walk", enemy.id, enemy.id, enemy.max_hp, "jewelspider_dead");
+                                this.enemies_group.add(new_enemy);
+                            } else if (enemy.name == "Acid Spitter"){
+                                let new_enemy = new AcidSpitter(this, enemy.x, enemy.y, enemy.name, "acidspitter_walk", enemy.id, enemy.id, enemy.max_hp, "acidspitter_dead");
+                                this.enemies_group.add(new_enemy);
+                            }
+                        });
+                        this.sound.play("new_wave");
+                        this.current_wave_text.setText("Wave " + response.wave_number);
+                        this.next_wave_text.setText("Time until next wave: " + response.wave_interval);
+
+                    });
+
+                    this.socket.on("decrease_spawn_timer", (data) => {
+                        this.next_wave_text.setText("Time until next wave: " + data.spawn_timer);
+                    });
+
+                    this.socket.on("player left", (player_id, player_name) => {
+                        //keep your Current ID
+                        console.log("A player left");
+                        console.log(player_id);
+                        console.log(player_name);
+                        
+                        players[player_id].destroy();
+                        players[player_id] = null;
+                    });
+
+                    this.socket.on("update_positions", (positions) => {
+                        var i = 0;
+                        var player_positions = positions.positions;
+                        players.forEach(player => {
+                            if(player != null && i != current_player_id){
+                                console.log(player_positions[i].isDead);
+                                //console.log("x: " + player_positions[i].x + " y: " + player_positions[i].y);
+                                if(!player_positions[i].isDead){
+                                    player.x = player_positions[i].x;
+                                    player.y = player_positions[i].y;
+
+                                    this.player_name_texts[i].x = player.x - 20;
+                                    this.player_name_texts[i].y = player.y + 30;
+
+                                    //console.log("Velocity X: " + player_positions[i].velocity_x + " Velocity y: " + player_positions[i].velocity_y);
+                                    player.setVelocityX(player_positions[i].velocity_x);
+                                    player.setVelocityY(player_positions[i].velocity_y);
+                                    player.setTexture(player_positions[i].texture);
+                                    //console.log("Sprite rotation for player " + i + ": " + player_positions[i].sprite_rotation);
+                                    player.rotation = player_positions[i].sprite_rotation;
+                                } else {
+                                    if(i == 0){
+                                        player.setTexture('player1_dead');
+                                    } else if (i == 1){
+                                        player.setTexture('player2_dead');
+                                    } else if (i == 2){
+                                        player.setTexture('player3_dead');
+                                    } else {
+                                        players.setTexture('player4_dead');
+                                    }
+                                }
+                            }
+                            i += 1;
+                        }); 
+
+                        this.enemies_group.getChildren().forEach((child) => {
+                            if(child.name in positions.enemy_data){
+                                if(positions.enemy_data[child.name].isAlive){
+                                    child.body.velocity.setToPolar(positions.enemy_data[child.name].angle, positions.enemy_data[child.name].speed);
+                                    child.x = positions.enemy_data[child.name].prev_expected_enemy_x;
+                                    child.y = positions.enemy_data[child.name].prev_expected_enemy_y;
+                                    child.setHP(positions.enemy_data[child.name].hp);
+                                    child.rotation = positions.enemy_data[child.name].angle;
+
+                                    
+                                    if(child.type == 'Acid Spitter'){
+                                        if(positions.enemy_data[child.name].shoot){
+                                            let acid_shot = this.physics.add.sprite(child.x, child.y, "acid_shot");
+
+                                            acid_shot.rotation = positions.enemy_data[child.name].angle;
+                                            this.projectiles.add(acid_shot);
+
+                                            var tween1 = this.tweens.add({
+                                                targets: acid_shot,
+                                                x: positions.enemy_data[child.name].target.x,
+                                                y: positions.enemy_data[child.name].target.y,
+                                                ease: 'Power1',
+                                                duration: 1000,
+                                                yoyo: false,
+                                                onComplete: () => {
+                                                    acid_shot.setTexture("acid_splash");
+                                                    let timer_event = new Phaser.Time.TimerEvent({
+                                                        callback: this.eraseAcidSplash,
+                                                        args: [acid_shot],
+                                                        callbackScope: this,
+                                                        delay: 5000
+                                                    });
+                                                    this.time.addEvent(timer_event);
+                                                }
+                                            });
+                                        }
+                                    }
+                                    
+                                } else {
+                                    //server has informed us that an enemy has died
+                                    let drop_name = positions.enemy_data[child.name].dropped_item
+                                    if(drop_name != null){
+
+                                        let pickup = this.physics.add.sprite(
+                                            positions.enemy_data[child.name].prev_expected_enemy_x,
+                                            positions.enemy_data[child.name].prev_expected_enemy_y,
+                                        ).play({
+                                            key: drop_name,
+                                            repeat: -1
+                                        });
+                                        pickup.name = this.dropped_item_to_id[drop_name];
+                                        this.dropped_items.add(pickup);
+
+                                        var tween1 = this.tweens.add({
+                                            targets: pickup,
+                                            x: pickup.x + 50,
+                                            y: pickup.y + 50,
+                                            ease: 'Power1',
+                                            duration: 1000,
+                                            yoyo: false,
+                                        });
+                                    }
+
+                                    child.die(positions.enemy_data[child.name].angle);
+
+                                    this.sound.play("bug_death");
+
+                                    let timer_event = new Phaser.Time.TimerEvent({
+                                        callback: this.eraseCorpse,
+                                        args: [child],
+                                        callbackScope: this,
+                                        delay: 5000
+                                    });
+                                    this.time.addEvent(timer_event);
+
+
+                                }
+                            }
+                        });
+
+                        this.other_graphics.clear();
+                        positions.drawn_shapes.map((drawn_shape) => {
+
+                            if(drawn_shape.drawn_by != current_player_id){
+                                if(drawn_shape.shape == "Line"){
+                                    console.log("Found a line");
+                                    
+                                    this.other_graphics.lineStyle(2, drawn_shape.line_color, 1.0);
+                                    let other_line = new Phaser.Geom.Line(
+                                        drawn_shape.points[0][0],
+                                        drawn_shape.points[0][1],
+                                        drawn_shape.points[1][0],
+                                        drawn_shape.points[1][1]  
+                                    )
+                                    this.other_graphics.strokeLineShape(other_line);
+                                }
+                            }
+                        })
+
+                        positions.audio.map((audio) => {
+                            console.log(audio);
+                            if(audio.id != current_player_id){
+                                this.sound.play(audio.audio_sprite_name, {
+                                    "volume": 0.3
+                                });
+                            }
+                        });
+                        
+                    });
+                    
+                    this.socket.on("game over", (response) => {
+                        console.log(response.frontend_host);
+                        console.log(response.frontend_port);
+                        
+                        gameover_menu = this.add.sprite(400, 210, "gameover").setInteractive();
+                        GAME_ENDED = true;
+                        gameover_menu.on('pointerdown', function(pointer) {
+
+                            window.location.replace("http://" + response.frontend_host + ":" + response.frontend_port);
+
+                        });
+
+                        
+                        //window.location.replace("http://" + response.frontend_host + ":" + response.frontend_port);
+                        //window.location.replace(response.frontend_host);
+                    });
+
+                    this.socket.on("victory", (response) => {
+                        victory_menu = this.add.sprite(400, 210, "victory").setInteractive();
+                        GAME_ENDED = true;
+
+                        this.sound.play("victory");
+
+                        this.next_wave_text.setText("Time until next wave: None")
+                        victory_menu.on('pointerdown', function(pointer) {
+
+                            window.location.replace("http://" + response.frontend_host + ":" + response.frontend_port);
+
+                        });
+                    });
+
+                    targeting_line = new Phaser.Geom.Line(
+                        players[current_player_id].x,
+                        players[current_player_id].y, 
+                        players[current_player_id].x + 1,
+                        players[current_player_id].y + 1
+                    );
+
+                    shooting_line = new Phaser.Geom.Line(
+                        players[current_player_id].x,
+                        players[current_player_id].y,
+                        players[current_player_id].x + 1,
+                        players[current_player_id].y + 1
+                    );
+
+
+                    this.graphics.lineStyle(2, this.current_weapon.bullet_color, 1.0);
+                    this.ammo_graphics.fillStyle(0x0000aa, 1.0);
+                    this.graphics.strokeLineShape(targeting_line);
+
+                    this.drawAmmoGraphics();
+
+                    this.input.on('pointermove', function(pointer){
+                        //console.log("Moved the pointer!");
+                        if(!GAME_ENDED && !this.isDead){
+                            let rads = Phaser.Math.Angle.BetweenPoints(players[current_player_id], pointer);                  
+                            target = rads;
+                            players[current_player_id].rotation = target;
+
+                            let rise = pointer.y - players[current_player_id].y;
+                            let run = pointer.x - players[current_player_id].x;
+
+                            targeting_line.x2 = pointer.x + (run * 10);
+                            targeting_line.y2 = pointer.y + (rise * 10);
+                        }
+                    });
+
+                    this.input.on('wheel', this.scrollWheelCallback, this);
+                    cursors = this.input.keyboard.createCursorKeys();
+
+
+                    this.Wkey = this.input.keyboard.addKey('W');
+                    this.Akey = this.input.keyboard.addKey('A');
+                    this.Skey = this.input.keyboard.addKey('S');
+                    this.Dkey = this.input.keyboard.addKey('D');
+
+                   
+
+                    //this.sound.play("toil");
+
+                }
+
+
+                end_game(){
+
+                }
+                
+                update_server(){
+                    let shape = null;
+                    if(this.draw_queue.length > 0){
+                        shape = this.draw_queue.shift();
+                    }
+                    let audio = null;
+                    if(this.audio_queue.length > 0){
+                        audio = this.audio_queue.shift();
+                    }
+                    this.socket.emit("update-server", {
+                        id: current_player_id,
+                        x: players[current_player_id].x,
+                        y: players[current_player_id].y,
+                        velocity_x: 0,
+                        velocity_y: 0,                        
+                        //velocity_x: player_velocity_x,
+                        //velocity_y: player_velocity_y,
+                        texture: current_player_texture,
+                        sprite_rotation: target,
+                        drawn_shape: shape,
+                        audio: audio
+                        //enemy_x: this.bug1_sprite.x,
+                        //enemy_y: this.bug1_sprite.y
+                    });
+                }
+
+                calculateDistance(x1, y1, x2, y2){
+                    let rise = x2 - x1;
+                    let run = y2 - y1;
+                    return Math.sqrt(Math.pow(rise, 2) + Math.pow(run, 2));
+                }
+
+                update(){    
+
+                    //players[current_player_id].rotation = target;
+                    if(this.input.activePointer.isDown && !GAME_ENDED && !this.isDead){
+                        //console.log("Held the mouse down");
+
+                        if(!shootingCooldown){
+                            
+                            if(this.current_weapon.name != "Pistol"){
+                                this.current_weapon.ammo -= 1;
+                                this.current_weapon.ammo_sprite.width -= 3;
+                            }
+
+                            this.graphics.lineStyle(2, this.current_weapon.bullet_color, 1.0);
+                            this.ammo_graphics.clear();
+                            
+                            this.ammo_graphics.fillStyle(0x0000aa, 1.0);
+                            this.ammo_graphics.lineStyle(1, 0xffffff, 1.0);
+                            
+                            this.drawAmmoGraphics();
+
+                            this.sound.play(this.current_weapon.firing_sound, {
+                                "volume": 0.3
+                            });
+                            this.audio_queue.push({
+                                id: current_player_id,
+                                audio_sprite_name: this.current_weapon.firing_sound
+                            });
+
+                            players[current_player_id].setTexture(this.current_weapon.firing_sprites[current_player_id]);
+                            current_player_texture = this.current_weapon.firing_sprites[current_player_id];
+                            
+
+                            //var intersection = Phaser.Geom.Intersects.GetLineToRectangle(targeting_line, redbug1.getBounds());
+                            if(this.current_weapon.id == 2 || this.current_weapon_id == 3){
+                                //using a shotgun
+                                let pellet = 0;
+                                let targeting_line_start = new Phaser.Geom.Point(targeting_line.x1, targeting_line.y1);
+                                while(pellet < 5){
+                                    let random_angle_deviation = Phaser.Math.Between(-10, 10);
+                                    let random_angle_deviation_rads = Phaser.Math.DegToRad(random_angle_deviation);
+                                    shooting_line = Phaser.Geom.Line.RotateAroundPoint(
+                                        targeting_line,
+                                        targeting_line_start,
+                                        random_angle_deviation_rads
+                                    )
+                                    let intersection = [];
+                                    var hit_enemy = "";
+                                    this.enemies_group.getChildren().map((child) => {
+                                        if(child.isAlive){
+                                            //only detect collisions between bullets and alive enemies
+                                            let enemy_intersection = Phaser.Geom.Intersects.GetLineToRectangle(shooting_line, child.getBounds());
+                                            if(enemy_intersection.length > 0){
+                                                intersection = enemy_intersection;
+                                                hit_enemy = child.id;
+                                                console.log(child.name);
+                                            }
+                                        }
+                                    });
+                                    if(intersection.length > 0){
+                                        shooting_line.x2 = intersection[0].x;
+                                        shooting_line.y2 = intersection[0].y;
+                                        this.socket.emit("hit-enemy", {
+                                            id: hit_enemy,
+                                            damage: this.current_weapon.getDamage()
+                                        });
+                                        this.sound.play("bug_hit");
+                                    }
+                                    this.graphics.strokeLineShape(shooting_line);
+                                    pellet = pellet + 1;
+                                }
+                            } else {
+                                var intersection = [];
+                                var hit_enemy = "";
+                                this.enemies_group.getChildren().map((child) => {
+                                    if(child.isAlive){
+                                        //only detect collisions between bullets and alive enemies
+                                        let enemy_intersection = Phaser.Geom.Intersects.GetLineToRectangle(targeting_line, child.getBounds());
+                                        if(enemy_intersection.length > 0){
+                                            intersection = enemy_intersection;
+                                            hit_enemy = child.id;
+                                            console.log(child.name);
+                                        }
+                                    }
+                                });
+                                console.log(intersection);
+                                if(intersection.length > 0){
+                                    console.log("Hit!");
+                                    shooting_line.x2 = intersection[0].x;
+                                    shooting_line.y2 = intersection[0].y;
+                                    this.socket.emit("hit-enemy", {
+                                        id: hit_enemy,
+                                        damage: this.current_weapon.getDamage(),
+                                    });
+                                } else {
+                                    console.log("Miss!");
+                                    shooting_line.x2 = targeting_line.x2;
+                                    shooting_line.y2 = targeting_line.y2;
+                                }
+                                
+                                this.graphics.strokeLineShape(shooting_line);
+                                //this.graphics.lineStyle(2, 0x00ff00, 0.5);
+
+                                this.draw_queue.push({
+                                    "shape": "Line",
+                                    "drawn_by": current_player_id,
+                                    "line_color": this.current_weapon.bullet_color,
+                                    "fill_color": null,
+                                    "points": [[shooting_line.x1, shooting_line.y1], [shooting_line.x2, shooting_line.y2]]
+                                });
+                            }
+
+                            this.shooting_timer = new Phaser.Time.TimerEvent({
+                                callback: this.shootingTimerCallback,
+                                delay: this.current_weapon.fire_delay,
+                            });
+                            this.time.addEvent(this.shooting_timer);
+                            shootingCooldown = true;
+
+                        } else {
+                            if(this.current_weapon.ammo <= 0){
+                                this.current_weapon.ammo = 0;
+                                this.current_weapon.is_active = false;
+                                this.current_weapon.display_sprite.setTexture(this.current_weapon.getInactiveDisplaySprite());
+                                
+                                let i = this.current_weapon.id;
+                                let found_weapon_id = -1;
+                                while(i < this.weapons.length){
+                                    //try looking for the next active weapon with a greater ID
+                                    if(this.weapons[i].is_active == true){
+                                        //found an active weapon
+                                        found_weapon_id = i;
+                                        break;
+                                    }
+                                    i += 1;
+                                }
+                                if(found_weapon_id != -1){
+                                    //found a weapon by scanning forwards in the weapons array
+                                    this.selected_weapon_icon.y += 27 * (i - this.current_weapon_id);
+                                    this.current_weapon_id = found_weapon_id;
+                                    this.current_weapon = this.weapons[this.current_weapon_id];
+                                    players[current_player_id].setTexture(this.current_weapon.held_sprites[current_player_id]);
+                                    current_player_texture = this.current_weapon.held_sprite_name;
+
+                                } else {
+                                    //need to scan backwards.
+                                    //Note: this is guaranteed to find an active weapon because the pistol
+                                    //is always active
+                                    found_weapon_id = 0;
+                                    i = this.current_weapon_id;
+                                    while(i > 0){
+                                        if(this.weapons[i].is_active == true){
+                                            found_weapon_id = i;
+                                            break;
+                                        }
+                                        i -= 1;
+                                    }
+                                    this.selected_weapon_icon.y -= 27 * (this.current_weapon_id - i);
+                                    this.current_weapon_id = found_weapon_id;
+                                    this.current_weapon = this.weapons[this.current_weapon_id];
+                                    players[current_player_id].setTexture(this.current_weapon.held_sprites[current_player_id]);
+                                    current_player_texture = this.current_weapon.held_sprite_name;
+                                }
+                                this.ammo_graphics.clear();
+                                this.ammo_graphics.fillStyle(0x0000aa, 1.0);
+                                this.ammo_graphics.lineStyle(1, 0xffffff, 1.0);
+                                this.drawAmmoGraphics();
+                                //this.graphics.clear();
+                            } else {
+                                players[current_player_id].setTexture(this.current_weapon.held_sprites[current_player_id]);
+                                current_player_texture = this.current_weapon.held_sprites[current_player_id];
+                                this.graphics.clear();                               
+                            }
+                        }
+                    }                    
+
+                    if(this.Akey.isDown || this.Skey.isDown || this.Dkey.isDown || this.Wkey.isDown){
+                        if(!GAME_ENDED && !this.isDead){
+                            if(this.Akey.isDown){
+                                this.movePlayer(3);
+                                left_keydown = true;
+                            } else if (this.Dkey.isDown){
+                                this.movePlayer(2);
+                                right_keydown = true;
+                            } else if (this.Wkey.isDown){
+                                this.movePlayer(0);
+                                up_keydown = true;
+                            } else if (this.Skey.isDown){
+                                this.movePlayer(1)
+                                down_keydown = true;
+                            }
+                        }
+
+                    } else if ((this.Akey.isUp && left_keydown) || (this.Dkey.isUp && right_keydown) || (this.Wkey.isUp && up_keydown) || (this.Skey.isUp && down_keydown)) {
+                        players[current_player_id].setVelocityX(0);
+                        players[current_player_id].setVelocityY(0);
+
+                        player_velocity_x = 0;
+                        player_velocity_y = 0;
+
+                        if(this.Akey.isUp && left_keydown == true) {
+                            left_keydown = false;
+                        } else if (this.Dkey.isUp && right_keydown == true){
+                            right_keydown = false;
+                        } else if (this.Wkey.isUp && up_keydown == true){
+                            up_keydown = false;
+                        } else if (this.Skey.isUp && down_keydown == true){
+                            down_keydown = false;
+                        }
+                        
+                    }
+
+                    /*
+                    if(cursors.left.isDown || cursors.right.isDown || cursors.up.isDown || cursors.down.isDown){
+                        if(!GAME_ENDED && !this.isDead){
+                            if(cursors.left.isDown){
+                                this.movePlayer(3);
+                                left_keydown = true;
+                            } else if (cursors.right.isDown){
+                                this.movePlayer(2);
+                                right_keydown = true;
+                            } else if (cursors.up.isDown){
+                                this.movePlayer(0);
+                                up_keydown = true;
+                            } else if (cursors.down.isDown){
+                                this.movePlayer(1)
+                                down_keydown = true;
+                            }
+                        }
+
+                    } else if ((cursors.left.isUp && left_keydown) || (cursors.right.isUp && right_keydown) || (cursors.up.isUp && up_keydown) || (cursors.down.isUp && down_keydown)) {
+                        players[current_player_id].setVelocityX(0);
+                        players[current_player_id].setVelocityY(0);
+
+                        player_velocity_x = 0;
+                        player_velocity_y = 0;
+
+                        if(cursors.left.isUp && left_keydown == true) {
+                            left_keydown = false;
+                        } else if (cursors.right.isUp && right_keydown == true){
+                            right_keydown = false;
+                        } else if (cursors.up.isUp && up_keydown == true){
+                            up_keydown = false;
+                        } else if (cursors.down.isUp && down_keydown == true){
+                            down_keydown = false;
+                        }
+                        
+                    }
+                    */
+                    
+                }
+            }
+
+            var socket = io();
+
+            
+            socket.on("start-game", function(response) {
+                console.log("The host started the game.");
+                if(IS_HOST == false){
+                    current_scene.scene.start("game");
+                }
+            });
+
+
+            
+            
+
+            let lobby = new Lobby(socket);
+            let start_game = new Game(socket);
+
+
+            var config = {
+                type: Phaser.AUTO,
+                width: 800,
+                height: 600,
+                backgroundColor: "524e4e",
+                physics: {
+                    default: 'arcade',
+                    arcade: {
+                        debug: false
+                    }
+                },
+                scene: [lobby, start_game]
+
+            } 
+
+            var game = new Phaser.Game(config);
+            
+        </script>
+        <script>
+            function endGame(){
+                console.log("Ending game...");
+                socket.emit("game-over");
+                /*
+                socket.emit("game-over", (response) => {
+                    console.log(response.frontend_host);
+                    console.log(response.frontend_port);
+                    window.location.replace("http://" + response.frontend_host + ":" + response.frontend_port);
+                });
+                */
+            }
+        </script>
+        
+        <!--
+        <button onClick="endGame()">
+            Click me to end the game
+        </button>
+    -->
+    
+    </body>
+</html>

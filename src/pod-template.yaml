@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PodTemplate
+metadata:
+  name: my-podtemplate
+  namespace: default
+template:
+  metadata:
+    name: my-podtemplate
+  spec:
+    containers:
+    - name: bug-blaster-container
+      image: huan1398/bug-blaster:latest
+      env:
+      - name: LOBBY_PASSCODE
+        value: "iBGZLPGmQh"
+      - name: SERVER_NAME
+        value: bug-blaster-server1
+      ports:
+      - containerPort: 3000
