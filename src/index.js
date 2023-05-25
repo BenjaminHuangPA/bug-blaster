@@ -30,6 +30,7 @@ class Player {
         this.spriteList = spriteList;
         this.texture = this.spriteList[2];
         this.socket_id = socket_id;
+        this.score = 0; //player score from killing bugs
         this.name = name;
         this.hp = 100;
         this.isDead = false;
@@ -110,7 +111,7 @@ const acid_spitter_drop_table = {
 
 
 class Bug {
-    constructor(name, x, y, hp, max_hp, attack_power, movement_speed, isOnFire){
+    constructor(name, x, y, hp, max_hp, attack_power, movement_speed, score, isOnFire){
         this.name = name;
         this.id = this.createID();
         this.x = x;
@@ -119,6 +120,7 @@ class Bug {
         this.max_hp = max_hp;
         this.attack_power = attack_power;
         this.movement_speed = movement_speed;
+        this.score = score; //score gained from killing this bug
         this.isOnFire = isOnFire;
         this.isAlive = true;
         this.last_gasp = false;
@@ -334,6 +336,7 @@ function getPlayerDataCallbackFunction(player){
             velocity_y: player.velocity_y,
             texture: player.texture,
             name: player.name,
+            score: player.score,
             sprite_rotation: player.sprite_rotation,
         };
     }
@@ -769,13 +772,19 @@ io.on('connection', (socket) => {
     socket.on("hit-enemy", (data) => {
         console.log("Hit enemy with ID " + data.id);
         let hit_enemy = enemies.get(data.id);
+        let player_responsible_id = data.player;
+        console.log(data);
+        console.log("Player " + player_responsible_id + " hit " + hit_enemy);
         if(hit_enemy != undefined){
             //sometimes synchronization issues can occur
             hit_enemy.hp -= data.damage;
             if(hit_enemy.hp <= 0){
+
                 hit_enemy.hp = 0;
                 hit_enemy.isAlive = false;
                 kills[hit_enemy.name] += 1;
+                let enemy_score = hit_enemy.score
+                players[player_responsible_id].score += enemy_score;
             }
         }
     });
@@ -1037,23 +1046,23 @@ setInterval(() => {
                 }
                 
                 if(new_enemy_name === "Red Crawler"){
-                    new_enemy = new Bug("Red Crawler", random_x, random_y, 30, 30, 10, 6, false);
+                    new_enemy = new Bug("Red Crawler", random_x, random_y, 30, 30, 10, 6, 10, false);
                     new_enemy.setDropTable(red_crawler_drop_table);                    
                 } else if(new_enemy_name === "Blue Crawler") {
-                    new_enemy = new Bug("Blue Crawler", random_x, random_y, 50, 50, 15, 6, false);
+                    new_enemy = new Bug("Blue Crawler", random_x, random_y, 50, 50, 15, 6, 15, false);
                     new_enemy.setDropTable(blue_crawler_drop_table);
                 } else if(new_enemy_name === "Giant Crawler"){
-                    new_enemy = new Bug("Giant Crawler", random_x, random_y, 100, 100, 19, 6, false);
+                    new_enemy = new Bug("Giant Crawler", random_x, random_y, 100, 100, 19, 6, 30, false);
                     new_enemy.setDropTable(giant_crawler_drop_table);
                 } else if (new_enemy_name === "Jewel Spider") {
-                    new_enemy = new Bug("Jewel Spider", random_x, random_y, 120, 120, 15, 6, false);
+                    new_enemy = new Bug("Jewel Spider", random_x, random_y, 120, 120, 15, 6, 40, false);
                     new_enemy.setDropTable(jewel_spider_drop_table);
                 } else if (new_enemy_name === "Acid Spitter"){
-                    new_enemy = new Bug("Acid Spitter", random_x, random_y, 80, 80, 10, 6, false);
+                    new_enemy = new Bug("Acid Spitter", random_x, random_y, 80, 80, 10, 6, 50, false);
                     new_enemy.setDropTable(acid_spitter_drop_table)
                 } else {
                     console.log("WARNING: UNRECOGNIZED ENEMY NAME");
-                    new_enemy = new Bug("Red Crawler", random_x, random_y, 30, 30, 10, 6, false);
+                    new_enemy = new Bug("Red Crawler", random_x, random_y, 30, 30, 10, 6, 10, false);
                     new_enemy.setDropTable(red_crawler_drop_table);
                 }
                 

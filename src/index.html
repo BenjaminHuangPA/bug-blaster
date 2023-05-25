@@ -492,6 +492,7 @@
                     }
                     this.current_wave_text;
                     this.next_wave_text;
+                    this.score_text;
 
                     this.player_name_texts = [null, null, null, null];
                     
@@ -1045,6 +1046,7 @@
 
                     this.current_wave_text = this.add.text(200, 10, "Wave 0");
                     this.next_wave_text = this.add.text(200, 30, "Time until next wave: 10");
+                    this.score_text = this.add.text(200, 50, "Score: 0");
 
                     /*
                     this.add.text(55, 8, "Pistol", {"fontSize": "10px"});
@@ -1132,6 +1134,9 @@
                                         players.setTexture('player4_dead');
                                     }
                                 }
+                            } else if (i == current_player_id){
+                                //update my score
+                                this.score_text.setText('Score: ' + player_positions[i].score);
                             }
                             i += 1;
                         }); 
@@ -1429,6 +1434,7 @@
                                         shooting_line.y2 = intersection[0].y;
                                         this.socket.emit("hit-enemy", {
                                             id: hit_enemy,
+                                            player: current_player_id, //inform the server of what player shot what enemy
                                             damage: this.current_weapon.getDamage()
                                         });
                                         this.sound.play("bug_hit");
@@ -1457,6 +1463,7 @@
                                     shooting_line.y2 = intersection[0].y;
                                     this.socket.emit("hit-enemy", {
                                         id: hit_enemy,
+                                        player: current_player_id,
                                         damage: this.current_weapon.getDamage(),
                                     });
                                 } else {
